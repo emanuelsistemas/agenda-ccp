@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -43,6 +43,15 @@ export default function AdminScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [ministryData, setMinistryData] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [nome_ministerio, setNomeMinisterio] = useState('');
+  const [tipo_ministerio, setTipoMinisterio] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [nome_admin, setNomeAdmin] = useState('');
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateSchedule, setShowCreateSchedule] = useState(false);
@@ -55,18 +64,6 @@ export default function AdminScreen() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [assignments, setAssignments] = useState<Record<string, Assignment[]>>({});
-
-  useEffect(() => {
-    checkAdminStatus();
-  }, []);
-
-  useEffect(() => {
-    if (ministryData?.id) {
-      fetchUsers();
-      fetchSchedules();
-      fetchAnnouncements();
-    }
-  }, [ministryData]);
 
   const fetchAssignments = async (scheduleId: string) => {
     try {
@@ -106,7 +103,6 @@ export default function AdminScreen() {
       
       setSchedules(data || []);
 
-      // Fetch assignments for each schedule
       data?.forEach(schedule => {
         fetchAssignments(schedule.id);
       });
@@ -149,27 +145,154 @@ export default function AdminScreen() {
   };
 
   const checkAdminStatus = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const session = await AsyncStorage.getItem('@user_session');
-      
-      if (session) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+      const userData = await AsyncStorage.getItem('@user_data');
 
-          setIsAdmin(profile?.tipo_user === 'S');
+      if (session && userData) {
+        const parsedUserData = JSON.parse(userData);
+        setIsAdmin(parsedUserData.tipo_user === 'S');
+        setMinistryData(parsedUserData);
+      } else {
+        setIsAdmin(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status de administrador:', error);
+      setIsAdmin(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAdminStatus();
+  }, []);
+
+  useEffect(() => {
+    if (ministryData?.id) {
+      fetchUsers();
+      fetchSchedules();
+      fetchAnnouncements();
+    }
+  }, [ministryData]);
+
+  const handleLogin = async () => {
+    try {
+      setLoginError('');
+      setLoginLoading(true);
+
+      if (!email.trim() || !password.trim()) {
+        setLoginError('Preencha todos os campos');
+        return;
+      }
+
+      const { data: { session }, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim()
+      });
+
+      if (error) {
+        setLoginError('Email ou senha incorretos');
+        return;
+      }
+
+      if (session) {
+        await AsyncStorage.setItem('@user_session', JSON.stringify(session));
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          await AsyncStorage.setItem('@user_data', JSON.stringify(profile));
+          setIsAdmin(profile.tipo_user === 'S');
           setMinistryData(profile);
         }
       }
-    } catch (error) {
-      console.error('Error checking admin status:', error);
+    } catch (err) {
+      console.error('Erro ao fazer login:', err);
+      setLoginError('Erro ao fazer login');
     } finally {
-      setIsLoading(false);
+      setLoginLoading(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    try {
+      setLoginError('');
+      setLoginLoading(true);
+
+      if (!email.trim() || !password.trim() || !nome_ministerio.trim() || 
+          !tipo_ministerio.trim() || !nome_admin.trim()) {
+        setLoginError('Preencha todos os campos obrigatórios');
+        return;
+      }
+
+      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (signUpError) throw signUpError;
+
+      if (!user) {
+        setLoginError('Erro ao criar conta');
+        return;
+      }
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: user.id,
+            email: email.trim(),
+            nome_ministerio: nome_ministerio.trim(),
+            tipo_ministerio: tipo_ministerio.trim(),
+            descricao: descricao.trim(),
+            nome_admin: nome_admin.trim(),
+            tipo_user: 'S'
+          }
+        ]);
+
+      if (profileError) throw profileError;
+
+      const { data: { session }, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim()
+      });
+
+      if (signInError) throw signInError;
+
+      if (session) {
+        await AsyncStorage.setItem('@user_session', JSON.stringify(session));
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          await AsyncStorage.setItem('@user_data', JSON.stringify(profile));
+          setIsAdmin(profile.tipo_user === 'S');
+          setMinistryData(profile);
+        }
+      }
+
+      setEmail('');
+      setPassword('');
+      setNomeMinisterio('');
+      setTipoMinisterio('');
+      setDescricao('');
+      setNomeAdmin('');
+      setIsSignUp(false);
+
+    } catch (err) {
+      console.error('Erro ao criar conta:', err);
+      setLoginError('Erro ao criar conta');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -343,10 +466,117 @@ export default function AdminScreen() {
   if (!isAdmin) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.centerContent}>
-          <Text style={styles.errorText}>Acesso não autorizado</Text>
-          <Text style={styles.subText}>Esta área é restrita para administradores</Text>
-        </View>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.loginContainer}>
+            <Text style={styles.loginTitle}>Área Administrativa</Text>
+            <Text style={styles.loginSubtitle}>
+              {isSignUp ? 'Crie sua conta' : 'Faça login para acessar'}
+            </Text>
+
+            {loginError ? (
+              <Text style={styles.errorText}>{loginError}</Text>
+            ) : null}
+
+            {isSignUp ? (
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Nome do Ministério</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={nome_ministerio}
+                    onChangeText={setNomeMinisterio}
+                    placeholder="Digite o nome do ministério"
+                    placeholderTextColor="#666"
+                  />
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Tipo do Ministério</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={tipo_ministerio}
+                    onChangeText={setTipoMinisterio}
+                    placeholder="Digite o tipo do ministério"
+                    placeholderTextColor="#666"
+                  />
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Descrição (opcional)</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={descricao}
+                    onChangeText={setDescricao}
+                    placeholder="Digite uma descrição"
+                    placeholderTextColor="#666"
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Nome do Administrador</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={nome_admin}
+                    onChangeText={setNomeAdmin}
+                    placeholder="Digite seu nome completo"
+                    placeholderTextColor="#666"
+                  />
+                </View>
+              </>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Digite seu email"
+                placeholderTextColor="#666"
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Senha</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Digite sua senha"
+                placeholderTextColor="#666"
+                secureTextEntry
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.loginButton, loginLoading && styles.buttonDisabled]}
+              onPress={isSignUp ? handleSignUp : handleLogin}
+              disabled={loginLoading}>
+              <Text style={styles.loginButtonText}>
+                {loginLoading 
+                  ? (isSignUp ? 'Criando conta...' : 'Entrando...') 
+                  : (isSignUp ? 'Criar Conta' : 'Entrar')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchButton}
+              onPress={() => {
+                setIsSignUp(!isSignUp);
+                setLoginError('');
+              }}>
+              <Text style={styles.switchButtonText}>
+                {isSignUp 
+                  ? 'Já tem uma conta? Faça login' 
+                  : 'Não tem uma conta? Crie agora'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -588,10 +818,60 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#121212',
   },
-  centerContent: {
+  loginContainer: {
     flex: 1,
+    padding: 20,
     justifyContent: 'center',
+  },
+  loginTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 32,
+    color: '#fff',
+    marginBottom: 8,
+  },
+  loginSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+    color: '#60A5FA',
+    marginBottom: 32,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    color: '#fff',
+    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    padding: 12,
+    color: '#fff',
+    fontFamily: 'Inter_400Regular',
+  },
+  loginButton: {
+    backgroundColor: '#60A5FA',
+    padding: 16,
+    borderRadius: 8,
     alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  errorText: {
+    color: '#f87171',
+    marginBottom: 16,
+    fontFamily: 'Inter_400Regular',
   },
   loadingContainer: {
     flex: 1,
@@ -603,19 +883,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
   },
-  errorText: {
-    color: '#f87171',
-    fontSize: 20,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 8,
-  },
-  subText: {
-    color: '#666',
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-  },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   header: {
     padding: 20,
@@ -664,11 +937,6 @@ const styles = StyleSheet.create({
   },
   ministryInfo: {
     gap: 4,
-  },
-  label: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: '#666',
   },
   value: {
     fontFamily: 'Inter_600SemiBold',
@@ -877,5 +1145,19 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  switchButton: {
+    marginTop: 16,
+    padding: 8,
+  },
+  switchButtonText: {
+    color: '#60A5FA',
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
   },
 });
