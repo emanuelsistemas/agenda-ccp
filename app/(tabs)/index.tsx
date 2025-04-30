@@ -86,58 +86,70 @@ export default function HomeScreen() {
         return;
       }
 
-      // First, get the user's ID using the CPF
-      const { data: userData, error: userError } = await supabase
+      // Get all user IDs associated with this CPF
+      const { data: usersData, error: usersError } = await supabase
         .from('profiles_user')
-        .select('id')
+        .select('id, admin_id')
         .eq('cpf', cleanCPF)
-        .single();
+        .eq('status', 'active');
 
-      if (userError) {
-        if (userError.code === 'PGRST116') {
-          setError(`Nenhuma agenda encontrada para o CPF ${cpf}`);
-        } else {
-          throw userError;
-        }
+      if (usersError) throw usersError;
+
+      if (!usersData || usersData.length === 0) {
+        setError(`Nenhuma agenda encontrada para o CPF ${cpf}`);
+        setSchedules([]);
+        setAnnouncements([]);
         return;
       }
 
-      // Then get the schedules where this user is assigned
-      const { data: assignmentsData, error: assignmentsError } = await supabase
-        .from('schedule_assignments')
-        .select(`
-          schedules (
-            id,
-            date,
-            title,
-            description,
-            profiles (
-              nome_admin,
-              nome_ministerio
+      // Get all schedules for all user IDs
+      const allSchedules: Schedule[] = [];
+      const adminIds = new Set<string>();
+
+      for (const userData of usersData) {
+        adminIds.add(userData.admin_id);
+
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('schedule_assignments')
+          .select(`
+            schedules (
+              id,
+              date,
+              title,
+              description,
+              profiles (
+                nome_admin,
+                nome_ministerio
+              )
             )
-          )
-        `)
-        .eq('user_id', userData.id);
+          `)
+          .eq('user_id', userData.id);
 
-      if (assignmentsError) throw assignmentsError;
+        if (assignmentsError) throw assignmentsError;
 
-      const formattedSchedules = assignmentsData
-        ?.map(item => ({
-          id: item.schedules.id,
-          date: item.schedules.date,
-          title: item.schedules.title,
-          description: item.schedules.description,
-          admin: {
-            nome_admin: item.schedules.profiles.nome_admin,
-            nome_ministerio: item.schedules.profiles.nome_ministerio
-          }
-        }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
+        if (assignmentsData) {
+          const formattedSchedules = assignmentsData
+            .map(item => ({
+              id: item.schedules.id,
+              date: item.schedules.date,
+              title: item.schedules.title,
+              description: item.schedules.description,
+              admin: {
+                nome_admin: item.schedules.profiles.nome_admin,
+                nome_ministerio: item.schedules.profiles.nome_ministerio
+              }
+            }));
 
-      setSchedules(formattedSchedules);
+          allSchedules.push(...formattedSchedules);
+        }
+      }
 
-      // Get announcements from ministries where user is assigned
-      if (formattedSchedules.length > 0) {
+      // Sort schedules by date
+      allSchedules.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setSchedules(allSchedules);
+
+      // Get announcements from all ministries where user is assigned
+      if (adminIds.size > 0) {
         const { data: announcementData, error: announcementError } = await supabase
           .from('announcements')
           .select(`
@@ -150,6 +162,7 @@ export default function HomeScreen() {
               nome_ministerio
             )
           `)
+          .in('admin_id', Array.from(adminIds))
           .eq('active', true)
           .order('created_at', { ascending: false });
 
@@ -169,7 +182,7 @@ export default function HomeScreen() {
         setAnnouncements(formattedAnnouncements);
       }
 
-      if (formattedSchedules.length === 0) {
+      if (allSchedules.length === 0) {
         setError(`Nenhuma agenda encontrada para o CPF ${cpf}`);
       }
     } catch (err) {
