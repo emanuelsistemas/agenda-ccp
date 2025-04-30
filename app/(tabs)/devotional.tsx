@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LogOut, Plus, UserPlus, Pencil, Trash2, Calendar, Users, BellRing } from 'lucide-react-native';
+import { LogOut, Plus, UserPlus, Pencil, Trash2, Calendar, Users, BellRing, Eye, EyeOff } from 'lucide-react-native';
 import { CreateUserModal } from '@/components/CreateUserModal';
 import { EditUserModal } from '@/components/EditUserModal';
 import { CreateScheduleModal } from '@/components/CreateScheduleModal';
@@ -39,19 +39,24 @@ interface Announcement {
   active: boolean;
 }
 
+const tiposMinisterio = ['Brigada', 'Louvor', 'Dança', 'Homem', 'Mulher'];
+
 export default function AdminScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [ministryData, setMinistryData] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [nome_ministerio, setNomeMinisterio] = useState('');
-  const [tipo_ministerio, setTipoMinisterio] = useState('');
   const [descricao, setDescricao] = useState('');
   const [nome_admin, setNomeAdmin] = useState('');
+  const [tipoMinisterio, setTipoMinisterio] = useState('');
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateSchedule, setShowCreateSchedule] = useState(false);
@@ -225,8 +230,13 @@ export default function AdminScreen() {
       setLoginLoading(true);
 
       if (!email.trim() || !password.trim() || !nome_ministerio.trim() || 
-          !tipo_ministerio.trim() || !nome_admin.trim()) {
+          !nome_admin.trim() || !tipoMinisterio) {
         setLoginError('Preencha todos os campos obrigatórios');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setLoginError('As senhas não coincidem');
         return;
       }
 
@@ -249,7 +259,7 @@ export default function AdminScreen() {
             id: user.id,
             email: email.trim(),
             nome_ministerio: nome_ministerio.trim(),
-            tipo_ministerio: tipo_ministerio.trim(),
+            tipo_ministerio: tipoMinisterio,
             descricao: descricao.trim(),
             nome_admin: nome_admin.trim(),
             tipo_user: 'S'
@@ -282,10 +292,11 @@ export default function AdminScreen() {
 
       setEmail('');
       setPassword('');
+      setConfirmPassword('');
       setNomeMinisterio('');
-      setTipoMinisterio('');
       setDescricao('');
       setNomeAdmin('');
+      setTipoMinisterio('');
       setIsSignUp(false);
 
     } catch (err) {
@@ -480,23 +491,36 @@ export default function AdminScreen() {
             {isSignUp ? (
               <>
                 <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Tipo do Ministério</Text>
+                  <View style={styles.pickerContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {tiposMinisterio.map((tipo) => (
+                        <TouchableOpacity
+                          key={tipo}
+                          style={[
+                            styles.pickerOption,
+                            tipoMinisterio === tipo && styles.pickerOptionSelected
+                          ]}
+                          onPress={() => setTipoMinisterio(tipo)}>
+                          <Text style={[
+                            styles.pickerOptionText,
+                            tipoMinisterio === tipo && styles.pickerOptionTextSelected
+                          ]}>
+                            {tipo}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
                   <Text style={styles.label}>Nome do Ministério</Text>
                   <TextInput
                     style={styles.input}
                     value={nome_ministerio}
                     onChangeText={setNomeMinisterio}
                     placeholder="Digite o nome do ministério"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Tipo do Ministério</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={tipo_ministerio}
-                    onChangeText={setTipoMinisterio}
-                    placeholder="Digite o tipo do ministério"
                     placeholderTextColor="#666"
                   />
                 </View>
@@ -542,15 +566,51 @@ export default function AdminScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Senha</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Digite sua senha"
-                placeholderTextColor="#666"
-                secureTextEntry
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Digite sua senha"
+                  placeholderTextColor="#666"
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(!showPassword)}>
+                  {showPassword ? (
+                    <EyeOff size={20} color="#666" />
+                  ) : (
+                    <Eye size={20} color="#666" />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
+
+            {isSignUp && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Confirmar Senha</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Confirme sua senha"
+                    placeholderTextColor="#666"
+                    secureTextEntry={!showConfirmPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                    {showConfirmPassword ? (
+                      <EyeOff size={20} color="#666" />
+                    ) : (
+                      <Eye size={20} color="#666" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.loginButton, loginLoading && styles.buttonDisabled]}
@@ -568,6 +628,10 @@ export default function AdminScreen() {
               onPress={() => {
                 setIsSignUp(!isSignUp);
                 setLoginError('');
+                setPassword('');
+                setConfirmPassword('');
+                setShowPassword(false);
+                setShowConfirmPassword(false);
               }}>
               <Text style={styles.switchButtonText}>
                 {isSignUp 
@@ -601,10 +665,6 @@ export default function AdminScreen() {
             <View style={styles.ministryInfo}>
               <Text style={styles.label}>Nome do Ministério:</Text>
               <Text style={styles.value}>{ministryData?.nome_ministerio}</Text>
-            </View>
-            <View style={styles.ministryInfo}>
-              <Text style={styles.label}>Tipo:</Text>
-              <Text style={styles.value}>{ministryData?.tipo_ministerio}</Text>
             </View>
             <View style={styles.ministryInfo}>
               <Text style={styles.label}>Administrador:</Text>
@@ -692,12 +752,21 @@ export default function AdminScreen() {
                         {announcement.content}
                       </Text>
                       <TouchableOpacity
-                        style={[
-                          styles.statusButton,
-                          announcement.active ? styles.statusActive : styles.statusInactive
-                        ]}
+                        style={styles.toggleButton}
                         onPress={() => handleToggleAnnouncementStatus(announcement)}>
-                        <Text style={styles.statusText}>
+                        <View style={[
+                          styles.toggleTrack,
+                          announcement.active && styles.toggleTrackActive
+                        ]}>
+                          <View style={[
+                            styles.toggleThumb,
+                            announcement.active && styles.toggleThumbActive
+                          ]} />
+                        </View>
+                        <Text style={[
+                          styles.toggleText,
+                          announcement.active && styles.toggleTextActive
+                        ]}>
                           {announcement.active ? 'Ativo' : 'Inativo'}
                         </Text>
                       </TouchableOpacity>
@@ -1136,15 +1205,40 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
   },
-  statusButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
   },
-  statusText: {
-    fontSize: 12,
+  toggleTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#333',
+    padding: 2,
+  },
+  toggleTrackActive: {
+    backgroundColor: '#34D399',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#666',
+    transform: [{ translateX: 0 }],
+  },
+  toggleThumbActive: {
+    backgroundColor: '#fff',
+    transform: [{ translateX: 20 }],
+  },
+  toggleText: {
+    color: '#666',
+    marginLeft: 8,
+    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+  },
+  toggleTextActive: {
+    color: '#34D399',
   },
   textArea: {
     height: 100,
@@ -1159,5 +1253,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 12,
+    color: '#fff',
+    fontFamily: 'Inter_400Regular',
+  },
+  eyeButton: {
+    padding: 12,
+  },
+  pickerContainer: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    padding: 8,
+  },
+  pickerOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 6,
+    backgroundColor: '#262626',
+  },
+  pickerOptionSelected: {
+    backgroundColor: '#60A5FA',
+  },
+  pickerOptionText: {
+    color: '#666',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  pickerOptionTextSelected: {
+    color: '#fff',
   },
 });
